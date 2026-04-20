@@ -1,0 +1,4 @@
+vosk==0.3.45
+numpy==2.4.4
+scipy==1.17.1
+python_speech_features==0.6
