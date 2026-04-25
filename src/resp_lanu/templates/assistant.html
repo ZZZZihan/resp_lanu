@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="workspace-grid">
+  <div class="panel command-panel">
+    <div class="section-heading">
+      <p class="eyebrow">Assistant Workbench</p>
+      <h2>语音工作台</h2>
+      <p>输入文本、上传音频或直接录音，提交后实时跟踪识别、对话和语音合成状态。</p>
+    </div>
+
+    <form id="assistant-form" class="stack-form">
+      <div class="form-grid two-columns">
+        <label for="session-select">
+          <span>已有会话</span>
+          <select id="session-select">
+            <option value="">创建新会话</option>
+          </select>
+        </label>
+
+        <label for="session-title">
+          <span>新会话标题</span>
+          <input id="session-title" type="text" placeholder="例如：树莓派演示">
+        </label>
+      </div>
+
+      <label for="text-input">
+        <span>文本输入</span>
+        <textarea id="text-input" rows="5" placeholder="直接输入问题，或只上传/录制音频。"></textarea>
+      </label>
+
+      <div class="capture-grid">
+        <label for="audio-input" class="upload-zone">
+          <span>上传音频</span>
+          <input id="audio-input" type="file" accept=".wav,.webm,.ogg,.mp4,.m4a,audio/wav,audio/webm,audio/ogg,audio/mp4">
+        </label>
+
+        <div class="recording-row">
+          <div>
+            <span>浏览器录音</span>
+            <p id="record-status">可直接上传 WAV，或在浏览器里录音后再提交任务。</p>
+          </div>
+          <div class="recording-actions">
+            <button id="record-start" class="button" type="button">开始录音</button>
+            <button id="record-stop" class="button button-secondary" type="button" disabled>停止录音</button>
+            <button id="record-clear" class="button button-ghost" type="button" disabled>清除录音</button>
+          </div>
+        </div>
+      </div>
+
+      <audio id="recording-preview" controls class="hidden"></audio>
+
+      <div class="submit-row">
+        <label class="toggle-row">
+          <input id="use-tts" type="checkbox" checked>
+          <span>生成语音回复</span>
+        </label>
+
+        <button class="button button-primary" type="submit">提交任务</button>
+      </div>
+    </form>
+  </div>
+
+  <aside class="side-rail">
+    <section class="panel">
+      <div class="section-heading compact">
+        <p class="eyebrow">Pipeline</p>
+        <h2>任务状态</h2>
+      </div>
+      <div id="job-status" class="status-panel" aria-live="polite">等待新任务...</div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading compact">
+        <p class="eyebrow">Dialogue</p>
+        <h2>对话结果</h2>
+      </div>
+      <div id="conversation-output" class="conversation-output">等待结果...</div>
+      <audio id="assistant-audio" controls class="hidden"></audio>
+    </section>
+  </aside>
+</section>
+{% endblock %}

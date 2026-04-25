@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 import numpy as np
 from python_speech_features import delta, fbank, mfcc
@@ -100,4 +100,3 @@ def save_feature_bundle(output_dir: str | Path, bundle: dict, summary: dict) -> 
         json.dumps(summary, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-

@@ -2,19 +2,20 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import json
-import sys
+from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+from _bootstrap import add_repo_root
+
+add_repo_root(__file__)
 
 from resp_lanu.features import extract_feature_bundle, save_feature_bundle
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Extract MFCC/filter-bank features from WAV audio.")
+    parser = argparse.ArgumentParser(
+        description="Extract MFCC/filter-bank features from WAV audio."
+    )
     parser.add_argument("input_wav", type=Path, help="Path to preprocessed 16 kHz WAV.")
     parser.add_argument("output_dir", type=Path, help="Directory to save features and summary.")
     return parser

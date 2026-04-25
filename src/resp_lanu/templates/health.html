@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="section-heading">
+    <p class="eyebrow">Service Health</p>
+    <h2>健康状态</h2>
+    <p>查看服务就绪状态、后台 worker、队列长度和各 provider 状态。</p>
+  </div>
+  <div id="health-output" class="health-grid" aria-live="polite">加载中...</div>
+</section>
+{% endblock %}

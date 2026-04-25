@@ -1,0 +1,16 @@
+[Unit]
+Description=resp-lanu offline-first speech assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/resp_lanu
+EnvironmentFile=/etc/resp-lanu/resp-lanu.env
+ExecStart=/home/pi/resp_lanu/.venv/bin/resp-lanu-serve --profile pi-offline --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

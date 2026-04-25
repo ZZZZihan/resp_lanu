@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resp-lanu"
+version = "0.1.0"
+description = "Offline-first Raspberry Pi speech assistant with web console and legacy ASR compatibility."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110,<1.0",
+  "itsdangerous>=2.2,<3.0",
+  "jinja2>=3.1",
+  "numpy>=2.0",
+  "pydantic>=2.7,<3.0",
+  "pydantic-settings>=2.2,<3.0",
+  "python-multipart>=0.0.9",
+  "python_speech_features>=0.6",
+  "scipy>=1.13",
+  "uvicorn>=0.29,<1.0",
+]
+
+[project.optional-dependencies]
+core = []
+server = []
+assistant = ["vosk>=0.3.44,<0.4"]
+pi = ["vosk>=0.3.44,<0.4"]
+dev = ["httpx>=0.27,<1.0", "pytest>=8,<9", "ruff>=0.6,<1.0"]
+
+[project.scripts]
+resp-lanu-serve = "resp_lanu.cli:serve_command"
+resp-lanu-doctor = "resp_lanu.cli:doctor_command"
+resp-lanu-export-legacy-artifacts = "resp_lanu.cli:export_legacy_artifacts_command"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+resp_lanu = ["templates/*.html", "static/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+"src/resp_lanu/web.py" = ["B008"]

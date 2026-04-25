@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }} | {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  </head>
+  <body data-page="{{ page_name }}">
+    <div class="console-shell">
+      <header class="shell-header">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">Raspberry Pi Voice Console</p>
+            <h1>{{ app_name }}</h1>
+            <p>{{ profile }} / 离线优先语音助手</p>
+          </div>
+        </div>
+        <form action="/logout" method="post">
+          <button class="button button-ghost" type="submit">退出登录</button>
+        </form>
+      </header>
+
+      <nav class="shell-nav" aria-label="主导航">
+        <a href="/assistant" class="{% if page_name == 'assistant' %}is-active{% endif %}" {% if page_name == 'assistant' %}aria-current="page"{% endif %}>工作台</a>
+        <a href="/history" class="{% if page_name == 'history' %}is-active{% endif %}" {% if page_name == 'history' %}aria-current="page"{% endif %}>会话</a>
+        <a href="/artifacts" class="{% if page_name == 'artifacts' %}is-active{% endif %}" {% if page_name == 'artifacts' %}aria-current="page"{% endif %}>产物</a>
+        <a href="/settings" class="{% if page_name == 'settings' %}is-active{% endif %}" {% if page_name == 'settings' %}aria-current="page"{% endif %}>配置</a>
+        <a href="/health" class="{% if page_name == 'health' %}is-active{% endif %}" {% if page_name == 'health' %}aria-current="page"{% endif %}>健康</a>
+      </nav>
+
+      <main class="shell-main">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+
+    <script src="{{ url_for('static', path='app.js') }}"></script>
+  </body>
+</html>

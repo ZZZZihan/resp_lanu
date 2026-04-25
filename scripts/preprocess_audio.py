@@ -3,17 +3,18 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import sys
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+from _bootstrap import add_repo_root
+
+add_repo_root(__file__)
 
 from resp_lanu.audio import preprocess_audio
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Preprocess audio for Raspberry Pi ASR experiments.")
+    parser = argparse.ArgumentParser(
+        description="Preprocess audio for Raspberry Pi ASR experiments."
+    )
     parser.add_argument("input_wav", type=Path, help="Path to input WAV file.")
     parser.add_argument("output_wav", type=Path, help="Path to output 16 kHz mono PCM WAV.")
     parser.add_argument(

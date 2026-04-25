@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="section-heading">
+    <p class="eyebrow">Runtime Configuration</p>
+    <h2>配置总览</h2>
+    <p>敏感项保持后端脱敏，只展示当前运行配置和 provider 可用性。</p>
+  </div>
+  <div id="settings-output" class="settings-grid" aria-live="polite">加载中...</div>
+</section>
+{% endblock %}

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-import json
 
 import numpy as np
 from scipy.io import wavfile
@@ -141,4 +141,3 @@ def preprocess_audio(
         peak_after=round(peak_after, 6),
         rms_after=round(rms_after, 6),
     )
-

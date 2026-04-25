@@ -9,6 +9,9 @@ __pycache__/
 htmlcov/
 build/
 dist/
+.env
+data/
+*.db
 *.egg-info/
 .coverage
 sample_audio/live_record.wav

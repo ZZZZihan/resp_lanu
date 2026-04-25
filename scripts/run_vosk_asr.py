@@ -2,20 +2,21 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import json
-import sys
+from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+from _bootstrap import add_repo_root
+
+add_repo_root(__file__)
 
 from resp_lanu.asr import recognize_wav
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run offline ASR with a Vosk model.")
-    parser.add_argument("model_dir", type=Path, help="Directory containing an extracted Vosk model.")
+    parser.add_argument(
+        "model_dir", type=Path, help="Directory containing an extracted Vosk model."
+    )
     parser.add_argument("input_wav", type=Path, help="Path to preprocessed 16 kHz mono PCM WAV.")
     parser.add_argument("output_json", type=Path, help="Path to save ASR result JSON.")
     parser.add_argument(

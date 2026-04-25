@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import json
 import re
 import wave
+from dataclasses import dataclass
+from pathlib import Path
 
 _PHRASE_NORMALIZER = re.compile(r"[\s，。！？；：、,.!?;:'\"“”‘’（）()\[\]{}<>《》]+")
 
@@ -47,14 +47,14 @@ def _read_phrase_hints(path: str | Path | None) -> list[PhraseHint]:
             aliases = item.get("aliases", [])
             if aliases is None:
                 aliases = []
-            if not isinstance(aliases, list) or not all(isinstance(alias, str) for alias in aliases):
+            if not isinstance(aliases, list) or not all(
+                isinstance(alias, str) for alias in aliases
+            ):
                 raise ValueError(
                     f"Phrase hint at index {index} must use a string list for 'aliases'."
                 )
         else:
-            raise ValueError(
-                f"Phrase hint at index {index} must be either a string or an object."
-            )
+            raise ValueError(f"Phrase hint at index {index} must be either a string or an object.")
 
         if not phrase:
             raise ValueError(f"Phrase hint at index {index} is missing a non-empty phrase.")
