@@ -35,9 +35,12 @@ class Settings(BaseSettings):
     generate_feature_artifacts: bool = False
 
     recognizer_provider: Literal["vosk"] = "vosk"
-    dialogue_provider: Literal["rule-based", "openai-compatible"] = "rule-based"
-    tts_provider: Literal["espeak", "piper", "none"] = "espeak"
+    dialogue_provider: Literal[
+        "rule-based", "openai-compatible", "zeroclaw", "mimo-router"
+    ] = "rule-based"
+    tts_provider: Literal["espeak", "piper", "edge-tts", "none"] = "espeak"
     enable_tts: bool = True
+    play_assistant_audio_on_server: bool = False
 
     model_dir: Path = Path("models/vosk-model-small-cn-0.22")
     grammar_file: Path | None = None
@@ -48,9 +51,19 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "assistant-model"
 
+    zeroclaw_binary: str = "zeroclaw"
+    zeroclaw_provider: str | None = None
+    zeroclaw_model: str | None = None
+    zeroclaw_api_key: str | None = None
+    zeroclaw_working_dir: Path | None = None
+    zeroclaw_timeout_seconds: int = 90
+
     espeak_binary: str = "espeak-ng"
     piper_binary: str = "piper"
     piper_model_path: Path | None = None
+    edge_tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    audio_player_binary: str = "pw-play"
+    audio_player_args: str = ""
 
     def model_post_init(self, __context: object) -> None:
         explicitly_set_fields = set(self.model_fields_set)
@@ -64,6 +77,8 @@ class Settings(BaseSettings):
             self.phrase_hints_file = self._resolve_under_workspace(self.phrase_hints_file)
         if self.piper_model_path is not None:
             self.piper_model_path = self._resolve_under_workspace(self.piper_model_path)
+        if self.zeroclaw_working_dir is not None:
+            self.zeroclaw_working_dir = self._resolve_under_workspace(self.zeroclaw_working_dir)
         self._apply_profile_defaults(explicitly_set_fields)
 
     def _resolve_under_workspace(self, path: Path) -> Path:
@@ -141,6 +156,9 @@ class Settings(BaseSettings):
 
     def masked_settings(self) -> dict:
         api_key = None if not self.openai_api_key else f"{self.openai_api_key[:4]}***"
+        zeroclaw_api_key = (
+            None if not self.zeroclaw_api_key else f"{self.zeroclaw_api_key[:4]}***"
+        )
         token = f"{self.admin_token[:4]}***" if self.admin_token else "(unset)"
         secret = f"{self.session_secret[:4]}***" if self.session_secret else "(unset)"
         return {
@@ -161,6 +179,7 @@ class Settings(BaseSettings):
             "dialogue_provider": self.dialogue_provider,
             "tts_provider": self.tts_provider,
             "enable_tts": self.enable_tts,
+            "play_assistant_audio_on_server": self.play_assistant_audio_on_server,
             "model_dir": str(self.model_dir),
             "grammar_file": str(self.grammar_file) if self.grammar_file else None,
             "phrase_hints_file": str(self.phrase_hints_file) if self.phrase_hints_file else None,
@@ -168,9 +187,20 @@ class Settings(BaseSettings):
             "openai_base_url": self.openai_base_url,
             "openai_api_key": api_key,
             "openai_model": self.openai_model,
+            "zeroclaw_binary": self.zeroclaw_binary,
+            "zeroclaw_provider": self.zeroclaw_provider,
+            "zeroclaw_model": self.zeroclaw_model,
+            "zeroclaw_api_key": zeroclaw_api_key,
+            "zeroclaw_working_dir": str(self.zeroclaw_working_dir)
+            if self.zeroclaw_working_dir
+            else None,
+            "zeroclaw_timeout_seconds": self.zeroclaw_timeout_seconds,
             "espeak_binary": self.espeak_binary,
             "piper_binary": self.piper_binary,
             "piper_model_path": str(self.piper_model_path) if self.piper_model_path else None,
+            "edge_tts_voice": self.edge_tts_voice,
+            "audio_player_binary": self.audio_player_binary,
+            "audio_player_args": self.audio_player_args,
         }
 
 

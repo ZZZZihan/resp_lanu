@@ -37,13 +37,14 @@
 
         <div class="recording-row">
           <div>
-            <span>浏览器录音</span>
-            <p id="record-status">可直接上传 WAV，或在浏览器里录音后再提交任务。</p>
+            <span>树莓派录音</span>
+            <p id="record-status">点“Pi5 录音并提交”会调用树莓派 USB 麦克风；浏览器录音只用于本机麦克风。</p>
           </div>
           <div class="recording-actions">
-            <button id="record-start" class="button" type="button">开始录音</button>
-            <button id="record-stop" class="button button-secondary" type="button" disabled>停止录音</button>
-            <button id="record-clear" class="button button-ghost" type="button" disabled>清除录音</button>
+            <button id="pi-record-submit" class="button button-primary" type="button">Pi5 录音并提交</button>
+            <button id="record-start" class="button" type="button">浏览器录音</button>
+            <button id="record-stop" class="button button-secondary" type="button" disabled>停止</button>
+            <button id="record-clear" class="button button-ghost" type="button" disabled>清除</button>
           </div>
         </div>
       </div>

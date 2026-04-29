@@ -105,6 +105,10 @@ class UploadResponse(BaseModel):
     artifact: ArtifactResponse
 
 
+class PiRecordRequest(BaseModel):
+    duration_seconds: int = Field(default=6, ge=1, le=30)
+
+
 class AssistantRespondRequest(BaseModel):
     session_id: str | None = None
     title: str | None = None

@@ -25,13 +25,14 @@ dependencies = [
 core = []
 server = []
 assistant = ["vosk>=0.3.44,<0.4"]
-pi = ["vosk>=0.3.44,<0.4"]
+pi = ["edge-tts>=7,<8", "vosk>=0.3.44,<0.4"]
 dev = ["httpx>=0.27,<1.0", "pytest>=8,<9", "ruff>=0.6,<1.0"]
 
 [project.scripts]
 resp-lanu-serve = "resp_lanu.cli:serve_command"
 resp-lanu-doctor = "resp_lanu.cli:doctor_command"
 resp-lanu-export-legacy-artifacts = "resp_lanu.cli:export_legacy_artifacts_command"
+resp-lanu-voice-turn = "resp_lanu.cli:voice_turn_command"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

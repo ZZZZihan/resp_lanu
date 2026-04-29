@@ -32,6 +32,38 @@ RESP_LANU_OPENAI_API_KEY=<接口密钥>
 RESP_LANU_OPENAI_MODEL=<模型名>
 ```
 
+Pi5 联网模式推荐用 `mimo-router`：
+
+```dotenv
+RESP_LANU_PROFILE=pi-connected
+RESP_LANU_DIALOGUE_PROVIDER=mimo-router
+RESP_LANU_OPENAI_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1
+RESP_LANU_OPENAI_API_KEY=<mimokey>
+RESP_LANU_OPENAI_MODEL=mimo-v2.5
+RESP_LANU_ZEROCLAW_BINARY=/home/pi/zeroclaw/zeroclaw
+RESP_LANU_ZEROCLAW_WORKING_DIR=/home/pi/zeroclaw
+RESP_LANU_ZEROCLAW_PROVIDER=custom:https://token-plan-cn.xiaomimimo.com/v1
+RESP_LANU_ZEROCLAW_MODEL=mimo-v2.5
+RESP_LANU_ZEROCLAW_API_KEY=<mimokey>
+RESP_LANU_ZEROCLAW_TIMEOUT_SECONDS=90
+RESP_LANU_RECORDING_DEVICE=plughw:CARD=Device,DEV=0
+RESP_LANU_TTS_PROVIDER=edge-tts
+RESP_LANU_ENABLE_TTS=true
+RESP_LANU_PLAY_ASSISTANT_AUDIO_ON_SERVER=true
+RESP_LANU_AUDIO_PLAYER_BINARY=pw-play
+```
+
+`mimo-router` 的职责边界：普通中文对话和意图理解交给 MiMo；工具、记忆、agent、硬件/机器人动作和长期 daemon 请求交给 ZeroClaw。真实 key 只放部署机 `.env`，不要写入仓库。
+
+Pi5 实机语音实验时，Web 控制台优先用“Pi5 录音并提交”。这个按钮走服务端 `arecord`，不是浏览器 `getUserMedia`，所以不会受 Mac 或浏览器麦克风权限影响。蓝牙音响需要先在 Pi5 上连成默认 PipeWire sink；开启 `RESP_LANU_PLAY_ASSISTANT_AUDIO_ON_SERVER=true` 后，助手回复音频会用 `RESP_LANU_AUDIO_PLAYER_BINARY` 播放。
+
+HDMI 声音实验可绕过 PipeWire，直接让 `aplay` 打到 HDMI1：
+
+```dotenv
+RESP_LANU_AUDIO_PLAYER_BINARY=aplay
+RESP_LANU_AUDIO_PLAYER_ARGS=-D plughw:CARD=vc4hdmi1,DEV=0
+```
+
 ## 常用启动命令
 
 本机开发：
@@ -43,13 +75,25 @@ resp-lanu-serve --profile dev-mac --host 127.0.0.1 --port 8000
 树莓派/LAN：
 
 ```bash
-RESP_LANU_PROFILE=pi-offline resp-lanu-serve --profile pi-offline --host 0.0.0.0 --port 8000
+RESP_LANU_PROFILE=pi-connected resp-lanu-serve --profile pi-connected --host 0.0.0.0 --port 8000
 ```
 
 配置检查：
 
 ```bash
 resp-lanu-doctor --profile dev-mac
+```
+
+Pi5 不开网页的一轮语音对话：
+
+```bash
+resp-lanu-voice-turn --profile pi-connected --duration 6
+```
+
+循环语音对话：
+
+```bash
+resp-lanu-voice-turn --profile pi-connected --duration 6 --loop
 ```
 
 ## 重要路径
@@ -84,6 +128,7 @@ curl -H "x-admin-token: <管理令牌>" http://127.0.0.1:8000/api/v1/health
 | `GET /api/v1/sessions` | 会话列表 |
 | `GET /api/v1/artifacts` | 产物列表 |
 | `POST /api/v1/audio/upload` | 上传音频 |
+| `POST /api/v1/audio/record` | 用 Pi5 本机麦克风录音并保存为上传音频 |
 | `POST /api/v1/assistant/respond` | 提交助手任务 |
 
 ## 维护提醒

@@ -23,6 +23,7 @@ from .schemas import (
     HealthResponse,
     JobEventResponse,
     JobResponse,
+    PiRecordRequest,
     SessionResponse,
     SettingsResponse,
     TurnResponse,
@@ -327,6 +328,21 @@ def create_app(
             media_type=media_type,
             content=content,
         )
+        return {"artifact": artifact}
+
+    @app.post("/api/v1/audio/record", response_model=UploadResponse)
+    def record_pi_audio(
+        payload: PiRecordRequest,
+        request: Request,
+        app_runtime: AssistantRuntime = Depends(runtime_dep),
+    ) -> dict:
+        require_api_auth(request)
+        try:
+            artifact = app_runtime.record_pi_audio(
+                duration_seconds=payload.duration_seconds
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return {"artifact": artifact}
 
     @app.get("/api/v1/audio/recordings", response_model=list[ArtifactResponse])

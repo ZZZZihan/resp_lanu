@@ -543,7 +543,7 @@ function resetRecordedAudio() {
   recordedAudioFile = null;
   recordedChunks = [];
   clearRecordingPreview();
-  setRecordingStatus("可直接上传 WAV，或在浏览器里录音后再提交任务。");
+  setRecordingStatus("点“Pi5 录音并提交”会调用树莓派 USB 麦克风；浏览器录音只用于本机麦克风。");
   setRecordingControls({isRecording: false, hasRecording: false});
 }
 
@@ -581,7 +581,7 @@ function stopRecordingTracks() {
 
 async function startBrowserRecording() {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    setRecordingStatus("当前浏览器不支持录音，请改用上传 WAV。");
+    setRecordingStatus("当前浏览器不支持录音；树莓派实验请直接点“Pi5 录音并提交”。");
     return;
   }
 
@@ -598,7 +598,7 @@ async function startBrowserRecording() {
       ? new MediaRecorder(mediaRecorderStream, {mimeType: mediaRecorderFormat.mimeType})
       : new MediaRecorder(mediaRecorderStream);
   } catch (error) {
-    setRecordingStatus(`无法访问麦克风：${String(error)}`);
+    setRecordingStatus(`浏览器麦克风不可用：${String(error)}。树莓派实验请直接点“Pi5 录音并提交”。`);
     stopRecordingTracks();
     return;
   }
@@ -676,37 +676,39 @@ function streamJob(jobId) {
   };
 }
 
-async function submitAssistantForm(event) {
-  event.preventDefault();
-  const fileInput = document.getElementById("audio-input");
+function buildAssistantPayload(uploadArtifactId = null) {
   const textInput = document.getElementById("text-input");
   const sessionSelect = document.getElementById("session-select");
   const sessionTitle = document.getElementById("session-title");
   const useTts = document.getElementById("use-tts");
 
-  renderStatusMessage("正在提交任务...");
-
-  let uploadArtifactId = null;
-  const file = recordedAudioFile || fileInput?.files?.[0];
-  if (file) {
-    renderStatusMessage("正在上传音频...");
-    const formData = new FormData();
-    formData.append("file", file);
-    const uploadResult = await fetchJson("/api/v1/audio/upload", {
-      method: "POST",
-      body: formData,
-    });
-    uploadArtifactId = uploadResult.artifact.id;
-  }
-
-  const payload = {
+  return {
     session_id: sessionSelect?.value || null,
     title: sessionTitle?.value || null,
     text_input: textInput?.value || null,
     upload_artifact_id: uploadArtifactId,
     use_tts: Boolean(useTts?.checked),
   };
+}
 
+async function uploadSelectedAudio() {
+  const fileInput = document.getElementById("audio-input");
+  const file = recordedAudioFile || fileInput?.files?.[0];
+  if (!file) {
+    return null;
+  }
+
+  renderStatusMessage("正在上传音频...");
+  const formData = new FormData();
+  formData.append("file", file);
+  const uploadResult = await fetchJson("/api/v1/audio/upload", {
+    method: "POST",
+    body: formData,
+  });
+  return uploadResult.artifact.id;
+}
+
+async function submitAssistantPayload(payload) {
   const snapshot = await fetchJson("/api/v1/assistant/respond", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -715,6 +717,44 @@ async function submitAssistantForm(event) {
   renderJobStatus(snapshot);
   renderConversation(snapshot);
   streamJob(snapshot.job.id);
+}
+
+async function submitAssistantForm(event) {
+  event.preventDefault();
+  renderStatusMessage("正在提交任务...");
+
+  const uploadArtifactId = await uploadSelectedAudio();
+  await submitAssistantPayload(buildAssistantPayload(uploadArtifactId));
+}
+
+function setPiRecordingControls(isRecording) {
+  const piButton = document.getElementById("pi-record-submit");
+  const submitButton = document.querySelector("#assistant-form button[type='submit']");
+  if (piButton) {
+    piButton.disabled = isRecording;
+  }
+  if (submitButton) {
+    submitButton.disabled = isRecording;
+  }
+  setRecordingControls({isRecording: false, hasRecording: Boolean(recordedAudioFile)});
+}
+
+async function recordPiAndSubmit() {
+  const durationSeconds = 6;
+  setPiRecordingControls(true);
+  renderStatusMessage(`Pi5 正在录音 ${durationSeconds} 秒...`);
+  setRecordingStatus(`Pi5 USB 麦克风录音中，请现在讲话，${durationSeconds} 秒后会自动提交。`);
+  try {
+    const recordResult = await fetchJson("/api/v1/audio/record", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({duration_seconds: durationSeconds}),
+    });
+    setRecordingStatus("Pi5 录音已完成，正在识别并回复。");
+    await submitAssistantPayload(buildAssistantPayload(recordResult.artifact.id));
+  } finally {
+    setPiRecordingControls(false);
+  }
 }
 
 async function loadHistory() {
@@ -780,6 +820,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     document.getElementById("record-start")?.addEventListener("click", () => {
       startBrowserRecording().catch((error) => setRecordingStatus(`录音失败：${String(error)}`));
+    });
+    document.getElementById("pi-record-submit")?.addEventListener("click", () => {
+      recordPiAndSubmit().catch((error) => {
+        renderStatusMessage(String(error), "danger");
+        setRecordingStatus(`Pi5 录音失败：${String(error)}`);
+      });
     });
     document.getElementById("record-stop")?.addEventListener("click", () => {
       stopBrowserRecording();

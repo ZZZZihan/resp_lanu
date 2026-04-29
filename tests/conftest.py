@@ -54,6 +54,7 @@ def build_settings(tmp_path: Path, **overrides) -> Settings:
         model_dir=default_model_dir,
         phrase_hints_file=None,
         grammar_file=None,
+        _env_file=None,
         **overrides,
     )
     settings.ensure_directories()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import queue
+import re
+import shlex
 import shutil
 import subprocess
 import threading
@@ -172,6 +174,64 @@ class AssistantRuntime:
                 "size_bytes": len(content),
                 "original_filename": safe_name,
                 "source_media_type": media_type or "audio/wav",
+            },
+        )
+
+    def record_pi_audio(self, *, duration_seconds: int) -> dict[str, Any]:
+        artifact_id = self._new_id()
+        target_dir = self.settings.uploads_dir / artifact_id
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / "pi-recording.wav"
+        device = self.settings.recording_device or self._detect_recording_device()
+        command = [
+            "arecord",
+            "-q",
+            "-D",
+            device,
+            "-f",
+            "S16_LE",
+            "-r",
+            "16000",
+            "-c",
+            "1",
+            "-d",
+            str(duration_seconds),
+            "-t",
+            "wav",
+            str(target_path),
+        ]
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=duration_seconds + 5,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("arecord is required for Raspberry Pi recording.") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Raspberry Pi recording timed out.") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            raise RuntimeError(f"Raspberry Pi recording failed: {detail}") from exc
+
+        if not target_path.exists() or target_path.stat().st_size <= 44:
+            raise RuntimeError("Raspberry Pi recording produced an empty WAV file.")
+
+        return self.storage.add_artifact(
+            session_id=None,
+            turn_id=None,
+            job_id=None,
+            kind="uploaded_audio",
+            label=target_path.name,
+            relative_path=self._relative_to_workspace(target_path),
+            media_type="audio/wav",
+            metadata={
+                "source": "pi_arecord",
+                "recording_device": device,
+                "duration_seconds": duration_seconds,
+                "size_bytes": target_path.stat().st_size,
             },
         )
 
@@ -440,12 +500,18 @@ class AssistantRuntime:
                         turn_id=turn_id,
                         job_id=job_id,
                         kind="assistant_audio",
-                        label="assistant_response.wav",
+                        label=synthesis.output_path.name,
                         relative_path=self._relative_to_workspace(synthesis.output_path),
                         media_type=synthesis.media_type,
                         metadata={"provider": synthesis.provider_name},
                     )
+                    if self.settings.play_assistant_audio_on_server:
+                        metadata["server_audio_playback"] = self._play_audio_on_server(
+                            synthesis.output_path
+                        )
                 except ProviderUnavailableError as exc:
+                    metadata["tts_warning"] = str(exc)
+                except RuntimeError as exc:
                     metadata["tts_warning"] = str(exc)
 
             self._publish_phase(
@@ -543,6 +609,91 @@ class AssistantRuntime:
             capture_output=True,
         )
         return converted_path
+
+    def _detect_recording_device(self) -> str:
+        try:
+            completed = subprocess.run(
+                ["arecord", "-l"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("arecord is required for Raspberry Pi recording.") from exc
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError("No usable Raspberry Pi recording device was detected.") from exc
+
+        for line in completed.stdout.splitlines():
+            match = re.match(r"^card\s+(\d+):.*device\s+(\d+):", line.strip())
+            if match:
+                return f"plughw:{match.group(1)},{match.group(2)}"
+        raise RuntimeError("No usable Raspberry Pi recording device was detected.")
+
+    def _play_audio_on_server(self, audio_path: Path) -> dict[str, Any]:
+        player = shutil.which(self.settings.audio_player_binary)
+        if not player:
+            raise RuntimeError(
+                f"Audio player is not available: {self.settings.audio_player_binary}"
+            )
+        playback_path = self._prepare_server_playback_audio(audio_path, player)
+        player_args = shlex.split(self.settings.audio_player_args)
+        command = [player, *player_args, str(playback_path)]
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            return {
+                "player": self.settings.audio_player_binary,
+                "args": player_args,
+                "path": self._relative_to_workspace(audio_path),
+                "playback_path": self._relative_to_workspace(playback_path),
+            }
+        except OSError as exc:
+            raise RuntimeError(f"Server audio playback failed: {exc}") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            raise RuntimeError(f"Server audio playback failed: {detail}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Server audio playback timed out.") from exc
+
+    def _prepare_server_playback_audio(self, audio_path: Path, player: str) -> Path:
+        if Path(player).name != "aplay":
+            return audio_path
+
+        ffmpeg_binary = shutil.which("ffmpeg")
+        if not ffmpeg_binary:
+            raise RuntimeError("ffmpeg is required to convert TTS audio for aplay.")
+
+        playback_path = audio_path.with_name(f"{audio_path.stem}.playback.wav")
+        try:
+            subprocess.run(
+                [
+                    ffmpeg_binary,
+                    "-y",
+                    "-i",
+                    str(audio_path),
+                    "-vn",
+                    "-acodec",
+                    "pcm_s16le",
+                    "-ac",
+                    "2",
+                    "-ar",
+                    "48000",
+                    str(playback_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            raise RuntimeError(f"Server audio conversion failed: {detail}") from exc
+        return playback_path
 
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

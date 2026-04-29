@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -180,14 +183,23 @@ class OpenAICompatibleDialogueEngine(DialogueEngine):
             raise ProviderUnavailableError("OpenAI-compatible dialogue provider is not configured.")
 
         messages = [
-            {"role": "system", "content": "You are a concise Raspberry Pi speech assistant."}
+            {
+                "role": "system",
+                "content": (
+                    "你是运行在 Raspberry Pi 5 上的 resp-lanu 语音助手。"
+                    "你的回复文本会被系统自动合成为语音并从树莓派音频输出播放。"
+                    "如果用户让你“说一句”或通过音箱回应，直接给出要说的话，"
+                    "不要声称自己不能控制音箱。"
+                ),
+            }
         ]
         for item in history[-self.settings.max_history_messages :]:
             role = item.get("role", "user")
             content = item.get("content", "")
             if content:
                 messages.append({"role": role, "content": content})
-        messages.append({"role": "user", "content": user_text})
+        if not self._history_already_includes_current_user(history, user_text):
+            messages.append({"role": "user", "content": user_text})
 
         payload = {
             "model": self.settings.openai_model,
@@ -232,6 +244,276 @@ class OpenAICompatibleDialogueEngine(DialogueEngine):
         if base_url.endswith("/chat/completions"):
             return base_url
         return f"{base_url}/chat/completions"
+
+    def _history_already_includes_current_user(
+        self, history: list[dict], user_text: str
+    ) -> bool:
+        if not history:
+            return False
+        last_message = history[-1]
+        return (
+            last_message.get("role") == "user"
+            and str(last_message.get("content", "")).strip() == user_text.strip()
+        )
+
+
+class ZeroClawDialogueEngine(DialogueEngine):
+    name = "zeroclaw"
+    _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def status(self) -> ProviderStatus:
+        binary = self._resolve_binary()
+        configured = bool(binary)
+        details = []
+        if not binary:
+            details.append("ZeroClaw binary is not available.")
+        if self.settings.zeroclaw_provider:
+            details.append(f"provider={self.settings.zeroclaw_provider}")
+        if self.settings.zeroclaw_model:
+            details.append(f"model={self.settings.zeroclaw_model}")
+        return ProviderStatus(
+            name=self.name,
+            configured=configured,
+            available=configured,
+            detail="; ".join(details) if details else "ready",
+        )
+
+    def generate_reply(self, history: list[dict], user_text: str) -> DialogueResult:
+        binary = self._resolve_binary()
+        if not binary:
+            raise ProviderUnavailableError("ZeroClaw binary is not available.")
+
+        command = [binary, "agent"]
+        if self.settings.zeroclaw_provider:
+            command.extend(["--provider", self.settings.zeroclaw_provider])
+        if self.settings.zeroclaw_model:
+            command.extend(["--model", self.settings.zeroclaw_model])
+        command.extend(["-m", self._build_prompt(history, user_text)])
+
+        env = os.environ.copy()
+        api_key = self.settings.zeroclaw_api_key or self.settings.openai_api_key
+        if api_key:
+            env["API_KEY"] = api_key
+            env["ZEROCLAW_API_KEY"] = api_key
+            env["OPENAI_API_KEY"] = api_key
+        env.setdefault("NO_COLOR", "1")
+        env.setdefault("CLICOLOR", "0")
+
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.settings.zeroclaw_working_dir or self.settings.workspace_dir,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=True,
+                timeout=self.settings.zeroclaw_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ProviderUnavailableError("ZeroClaw dialogue request timed out.") from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = self._clean_output(exc.stderr or "")
+            stdout = self._clean_output(exc.stdout or "")
+            detail = stderr or stdout or str(exc)
+            raise ProviderUnavailableError(f"ZeroClaw dialogue request failed: {detail}") from exc
+
+        assistant_text = self._clean_output(completed.stdout)
+        if not assistant_text:
+            assistant_text = self._clean_output(completed.stderr)
+        if not assistant_text:
+            raise ProviderUnavailableError("ZeroClaw returned an empty response.")
+
+        return DialogueResult(
+            assistant_text=assistant_text,
+            provider_name=self.name,
+            metadata={
+                "command": self._safe_command(command),
+                "stderr": self._clean_output(completed.stderr),
+            },
+        )
+
+    def _resolve_binary(self) -> str | None:
+        configured = self.settings.zeroclaw_binary
+        configured_path = Path(configured).expanduser()
+        if configured_path.is_absolute() or configured_path.parent != Path("."):
+            return str(configured_path) if configured_path.exists() else None
+        return shutil.which(configured)
+
+    def _build_prompt(self, history: list[dict], user_text: str) -> str:
+        prompt_lines = [
+            "你是 ZeroClaw，现在作为 resp-lanu 语音助手的唯一对话与行动入口。",
+            "请直接给用户最终回复；不要输出推理过程、调试日志或内部分析。",
+            "如果用户请求硬件、工具、记忆、系统状态或长期任务，请按 ZeroClaw 能力处理。",
+        ]
+        previous_messages = self._previous_messages(history, user_text)
+        if previous_messages:
+            prompt_lines.append("")
+            prompt_lines.append("最近对话：")
+            prompt_lines.extend(previous_messages)
+        prompt_lines.append("")
+        prompt_lines.append(f"用户输入：{user_text.strip()}")
+        return "\n".join(prompt_lines)
+
+    def _previous_messages(self, history: list[dict], user_text: str) -> list[str]:
+        previous = list(history[-self.settings.max_history_messages :])
+        if previous and previous[-1].get("role") == "user":
+            if str(previous[-1].get("content", "")).strip() == user_text.strip():
+                previous = previous[:-1]
+        formatted = []
+        for message in previous:
+            role = "用户" if message.get("role") == "user" else "助手"
+            content = str(message.get("content", "")).strip()
+            if content:
+                formatted.append(f"{role}: {content}")
+        return formatted
+
+    def _clean_output(self, output: str) -> str:
+        cleaned = self._ANSI_RE.sub("", output)
+        lines = []
+        for line in cleaned.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if "zeroclaw::" in stripped or stripped.startswith(("WARN ", "INFO ")):
+                continue
+            lines.append(stripped)
+        return "\n".join(lines).strip()
+
+    def _safe_command(self, command: list[str]) -> list[str]:
+        secret_values = {self.settings.zeroclaw_api_key, self.settings.openai_api_key}
+        return ["***" if item in secret_values else item for item in command]
+
+
+class MimoRouterDialogueEngine(DialogueEngine):
+    name = "mimo-router"
+    _ZEROCLAW_KEYWORDS: tuple[str, ...] = (
+        "agent",
+        "daemon",
+        "gpio",
+        "shell",
+        "ssh",
+        "usb",
+        "zeroclaw",
+        "子代理",
+        "长期运行",
+        "后台",
+        "记住",
+        "记忆",
+        "回忆",
+        "忘记",
+        "保存",
+        "工具",
+        "调用",
+        "执行",
+        "运行命令",
+        "命令",
+        "终端",
+        "硬件",
+        "机器人",
+        "机械臂",
+        "动作",
+        "移动",
+        "前进",
+        "后退",
+        "左转",
+        "右转",
+        "舵机",
+        "摄像头",
+        "相机",
+        "守护进程",
+        "守护",
+        "长期任务",
+        "定时",
+        "提醒",
+        "启动",
+        "停止",
+        "重启",
+        "打开",
+        "关闭",
+        "系统状态",
+    )
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.mimo = OpenAICompatibleDialogueEngine(settings)
+        self.zeroclaw = ZeroClawDialogueEngine(settings)
+        self.fallback = RuleBasedDialogueEngine(settings)
+
+    def status(self) -> ProviderStatus:
+        mimo_status = self.mimo.status()
+        zeroclaw_status = self.zeroclaw.status()
+        available = mimo_status.available and zeroclaw_status.available
+        configured = mimo_status.configured or zeroclaw_status.configured
+        if available:
+            detail = "ready: MiMo handles ordinary Chinese dialogue; ZeroClaw handles actions."
+        else:
+            detail = (
+                f"mimo={mimo_status.detail}; "
+                f"zeroclaw={zeroclaw_status.detail}; "
+                "rule-based fallback is available."
+            )
+        return ProviderStatus(
+            name=self.name,
+            configured=configured,
+            available=available,
+            detail=detail,
+        )
+
+    def generate_reply(self, history: list[dict], user_text: str) -> DialogueResult:
+        route, intent_reason = self._route(user_text)
+        engine = self.zeroclaw if route == "zeroclaw" else self.mimo
+        try:
+            result = engine.generate_reply(history, user_text)
+        except ProviderUnavailableError as exc:
+            fallback = self.fallback.generate_reply(history, user_text)
+            return DialogueResult(
+                assistant_text=fallback.assistant_text,
+                provider_name=self.name,
+                metadata={
+                    "route": route,
+                    "dialogue_provider": self.fallback.name,
+                    "requested_dialogue_provider": engine.name,
+                    "intent_reason": intent_reason,
+                    "fallback_reason": str(exc),
+                    "fallback_provider": self.fallback.name,
+                },
+            )
+
+        metadata = {
+            "route": route,
+            "dialogue_provider": result.provider_name,
+            "intent_reason": intent_reason,
+            **self._without_route_keys(result.metadata),
+        }
+        return DialogueResult(
+            assistant_text=result.assistant_text,
+            provider_name=self.name,
+            metadata=metadata,
+        )
+
+    def _route(self, user_text: str) -> tuple[str, str]:
+        normalized = user_text.strip().lower().replace(" ", "")
+        for keyword in self._ZEROCLAW_KEYWORDS:
+            if keyword.lower().replace(" ", "") in normalized:
+                return "zeroclaw", f"matched keyword: {keyword}"
+        return "mimo", "default ordinary-dialogue route"
+
+    def _without_route_keys(self, metadata: dict) -> dict:
+        return {
+            key: value
+            for key, value in metadata.items()
+            if key
+            not in {
+                "route",
+                "dialogue_provider",
+                "intent_reason",
+                "fallback_reason",
+                "fallback_provider",
+            }
+        }
 
 
 class EspeakSynthesizer(SpeechSynthesizer):
@@ -305,6 +587,60 @@ class PiperSynthesizer(SpeechSynthesizer):
         )
 
 
+class EdgeTtsSynthesizer(SpeechSynthesizer):
+    name = "edge-tts"
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def status(self) -> ProviderStatus:
+        try:
+            __import__("edge_tts")
+            import_ok = True
+        except ImportError:
+            import_ok = False
+        return ProviderStatus(
+            name=self.name,
+            configured=self.settings.enable_tts and self.settings.tts_provider == self.name,
+            available=import_ok,
+            detail="ready" if import_ok else "edge-tts package is not installed.",
+        )
+
+    def synthesize(self, text: str, output_path: Path) -> SynthesisResult:
+        try:
+            __import__("edge_tts")
+        except ImportError as exc:
+            raise ProviderUnavailableError("edge-tts package is not installed.") from exc
+
+        target_path = output_path.with_suffix(".mp3")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "edge_tts",
+                    "--voice",
+                    self.settings.edge_tts_voice,
+                    "--text",
+                    text,
+                    "--write-media",
+                    str(target_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            raise ProviderUnavailableError(f"edge-tts request failed: {detail}") from exc
+        return SynthesisResult(
+            provider_name=self.name,
+            output_path=target_path,
+            media_type="audio/mpeg",
+        )
+
+
 class NoopSynthesizer(SpeechSynthesizer):
     name = "none"
 
@@ -325,6 +661,10 @@ def build_provider_bundle(settings: Settings) -> dict[str, object]:
     fallback_dialogue = RuleBasedDialogueEngine(settings)
     if settings.dialogue_provider == "openai-compatible":
         dialogue = OpenAICompatibleDialogueEngine(settings)
+    elif settings.dialogue_provider == "zeroclaw":
+        dialogue = ZeroClawDialogueEngine(settings)
+    elif settings.dialogue_provider == "mimo-router":
+        dialogue = MimoRouterDialogueEngine(settings)
     else:
         dialogue = fallback_dialogue
 
@@ -332,6 +672,8 @@ def build_provider_bundle(settings: Settings) -> dict[str, object]:
         synthesizer: SpeechSynthesizer = NoopSynthesizer()
     elif settings.tts_provider == "piper":
         synthesizer = PiperSynthesizer(settings)
+    elif settings.tts_provider == "edge-tts":
+        synthesizer = EdgeTtsSynthesizer(settings)
     else:
         synthesizer = EspeakSynthesizer(settings)
 
